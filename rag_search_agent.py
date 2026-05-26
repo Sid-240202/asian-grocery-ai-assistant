@@ -111,7 +111,6 @@ search_tool = StructuredTool.from_function(
     description="Use this tool to search for relevant products based on the user's query. The input should be a natural language query."
 )
 
-
 agent = create_agent(
     model=llm,
     tools=[search_tool],
@@ -127,6 +126,6 @@ concise answer to the user.
 
 
 user_query = str(input("Type your query here: "))
-response = agent.invoke({"messages": [HumanMessage(coīntent=user_query)]})
+response = agent.invoke({"messages": [HumanMessage(content=user_query)]})
 print(f"\nUSER: {user_query}")
-print(f"AI: {response['messages'][-1].content}")ī
+print(f"AI: {response['messages'][-1].content}")
