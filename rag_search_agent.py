@@ -53,8 +53,20 @@ def load_from_google_sheet(sheet_url):
             "product_name":str(row.get('Product Name (Clean)','')),
             "brand":str(row.get("Brand",'')),
             "category":str(row.get("Category", '')),
-            "pack_size":str(row.get("Pack Size Options",''))
-            
+            "Pack Size Options":str(row.get("Pack Size Options",'')),
+            "Price":str(row.get("Price",'')),
+            "Stock Availability":str(row.get("Stock Availability",'')),
+            "Description":str(row.get("Description",'')),
+            "Nutritional Information":str(row.get("Nutritional Information",'')),
+            "Ingredients":str(row.get("Ingredients",'')),
+            "Allergens":str(row.get("Allergens",'')),
+            "Additional Information":str(row.get("Additional Information",'')),
+            "Image URL":str(row.get("Image URL",'')),
+            "Product URL":str(row.get("Product URL",'')),
+            "Tags":str(row.get("Tags",'')),
+            "Ratings":str(row.get("Ratings",'')),
+            "SEO Keywords":str(row.get("SEO Keywords",'')),
+            "CroCross-Sell Items":str(row.get("Cross-Sell Items",'')),
             }
 
         chunks.append({
@@ -129,3 +141,10 @@ user_query = str(input("Type your query here: "))
 response = agent.invoke({"messages": [HumanMessage(content=user_query)]})
 print(f"\nUSER: {user_query}")
 print(f"AI: {response['messages'][-1].content}")
+
+
+# query :  how much max quantity atta can i buy?
+""" USER: how much max quantity atta can i buy?
+AI: Our store policy for buying atta is as follows: 
+The maximum quantity of atta that can be purchased at once is 10 kilograms.
+This is to ensure that we can meet the demand of all our customers while also preventing any potential shortages."""
