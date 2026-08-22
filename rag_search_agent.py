@@ -1,18 +1,23 @@
-from langchain_core.tools import StructuredTool
-from tavily import TavilyClient
-from langchain_groq import ChatGroq
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_core.documents import Document
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
-from utils.Config import Config
 import os
 import pandas as pd
 import warnings
-warnings.filterwarnings("ignore")
+
+# 1. Mute the deprecation warning specifically for langchain_community
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain_community")
+warnings.filterwarnings("ignore", category=UserWarning)
+
+from langchain_core.tools import StructuredTool
+from tavily import TavilyClient
+from langchain_google_genai import ChatGoogleGenerativeAI
+# 2. Use the standalone package for HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+# 3. FAISS stays in community for now (warning is silenced above)
+from langchain_community.vectorstores import FAISS 
+from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel, Field
+from utils.Config import Config
 
 
 tavily_api_key = Config.TAVILY_API_KEY
@@ -21,12 +26,16 @@ if not tavily_api_key:
 
 tavily_client = TavilyClient(api_key=tavily_api_key)
 
-groq_api_key = Config.GROQ_API_KEY
-if not groq_api_key:
-    raise ValueError("GROQ_API_KEY is not set in environment or .env")
 
-llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile",
-               temperature=0.7, max_tokens=1024)
+gemini_api_key = Config.GEMINI_API_KEY  # or Config.GOOGLE_API_KEY
+if not gemini_api_key:
+    raise ValueError("GEMINI_API_KEY is not set in environment or .env")
+
+
+llm = ChatGoogleGenerativeAI(
+    model="gemini-3.6-flash",
+    temperature=0,
+)
 
 def load_from_google_sheet(sheet_url):
     sheet_id = sheet_url.split('/d/')[1].split('/')[0]
@@ -75,6 +84,7 @@ print("Loading data from Google Sheet.............!!")
 print(f'='*60)
 
 sheet_url = Config.GOOGLE_SHEET_URL
+
 if not sheet_url:
     raise ValueError("GOOGLE_SHEET_URL or SHEET_URL is not set in environment or .env")
 try:
@@ -116,7 +126,8 @@ def search_tavily(query):
         return "An error occurred while searching Tavily."
     
 
-def search_with_fallback(query: str, k = 3) -> str:
+
+def search_with_fallback(query: str, k: int = 3) -> str:
     try:
         k = int(k)
     except (TypeError, ValueError):
@@ -129,16 +140,16 @@ def search_with_fallback(query: str, k = 3) -> str:
         product_info += res.page_content + "\n"
         combined_results.append(product_info)
 
-    if "No relevant documents found." in combined_results or len(results) == 0:
-        print("No relevant documents found in vector store. Falling back to Tavily search.")
+    # Join the list into a single string for evaluation and return
+    combined_text = "\n".join(combined_results)
+
+    if not results or "No relevant documents found." in combined_text:
+        print("No relevant documents found in vector store. Searching Tavily.")
         return search_tavily(query)
-    
-    if len(combined_results) < 50:
-        print("Insufficient information from vector store. Falling back to Tavily search.")
-        web_results = search_tavily(query)
-        return f"{combined_results}\n\nAdditional Information from web:\n{web_results}"
-        
-    return combined_results
+
+    print("Local products found. Searching Tavily for additional web information.")
+    web_results = search_tavily(query)
+    return f"{combined_text}\n\nAdditional Information from web:\n{web_results}"
 
 
 
@@ -174,11 +185,34 @@ agent_prompt = ChatPromptTemplate.from_messages([
     ("placeholder", "{agent_scratchpad}"),
 ])
 
-agent = create_tool_calling_agent(llm=llm, tools=[search_tool, tavily_tool], prompt=agent_prompt)
-agent_executor = AgentExecutor(agent=agent, tools=[search_tool, tavily_tool], verbose=True, max_iterations=3)
+# Use the local search results directly because Groq function-calling is not
+# supported reliably in this environment.
+search_results = search_with_fallback(user_query, k=3)
 
-agent_response = agent_executor.invoke({"input": user_query})
-response_content = agent_response["output"]
+prompt = (
+    f"{system_prompt}\n\n"
+    "Use the information below to answer the user's query.\n\n"
+    f"Search results:\n{search_results}\n\n"
+    f"Question: {user_query}"
+)
+
+
+def format_response(content):
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        text_parts = [
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        return "\n".join(part for part in text_parts if part).strip()
+
+    return str(content)
+
+
+response_content = llm.invoke(prompt)
 
 print(f"\nUSER: {user_query}")
-print(f"AI: {response_content}")
+print(f"AI:\n{format_response(response_content.content)}")
